@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import YouTube from 'react-youtube';
-import { Play, Youtube, Settings, Wand2, RefreshCcw } from 'lucide-react';
+import { Play, Youtube, Settings, Wand2, RefreshCcw, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { useToast } from '@/hooks/use-toast';
@@ -21,8 +21,9 @@ import {
 } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
 
-const SEGMENT_DURATION = 20;
 const POLL_INTERVAL = 1500;
+
+type SegmentDuration = 20 | 60;
 
 interface SegmentJob {
   jobId: string;
@@ -37,11 +38,18 @@ function formatTime(secs: number) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-async function requestSegment(videoUrl: string, startTime: number, model: string, voice: string, speed: number): Promise<string> {
+async function requestSegment(
+  videoUrl: string,
+  startTime: number,
+  model: string,
+  voice: string,
+  speed: number,
+  duration: number,
+): Promise<string> {
   const res = await fetch('/api/translate/process', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ videoUrl, startTime, model, voice, speed }),
+    body: JSON.stringify({ videoUrl, startTime, model, voice, speed, duration }),
   });
   const data = await res.json();
   return data.jobId as string;
@@ -84,6 +92,8 @@ export default function Home() {
   const [selectedModel, setSelectedModel] = useState('');
   const [selectedVoice, setSelectedVoice] = useState('');
   const [speed, setSpeed] = useState(1.0);
+  const [segmentDuration, setSegmentDuration] = useState<SegmentDuration>(20);
+  const segDurRef = useRef<number>(20);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [showOverlay, setShowOverlay] = useState(false);
@@ -102,7 +112,8 @@ export default function Home() {
 
   const { data: modelsData, isLoading: isLoadingModels } = useGetTtsModels();
 
-  const normalizeStart = (t: number) => Math.floor(t / SEGMENT_DURATION) * SEGMENT_DURATION;
+  const normalizeStart = useCallback((t: number) =>
+    Math.floor(t / segDurRef.current) * segDurRef.current, []);
 
   useEffect(() => {
     if (modelsData?.models?.length && !selectedModel) {
@@ -121,7 +132,7 @@ export default function Home() {
     }
   }, [selectedModel, modelsData, selectedVoice]);
 
-  useEffect(() => {
+  const resetPlayback = useCallback(() => {
     chainAbortRef.current?.abort();
     segmentCacheRef.current.clear();
     inFlightRef.current.clear();
@@ -130,7 +141,14 @@ export default function Home() {
     setShowOverlay(false);
     setPipelineVisible(false);
     setPipelineDone(false);
-  }, [url]);
+  }, []);
+
+  useEffect(() => { resetPlayback(); }, [url, resetPlayback]);
+
+  useEffect(() => {
+    segDurRef.current = segmentDuration;
+    resetPlayback();
+  }, [segmentDuration, resetPlayback]);
 
   const fetchSegment = useCallback(async (
     startTime: number,
@@ -139,7 +157,8 @@ export default function Home() {
     pipelineUpdate = false
   ): Promise<SegmentJob> => {
     const key = normalizeStart(startTime);
-    const label = `${formatTime(key)} – ${formatTime(key + SEGMENT_DURATION)}`;
+    const dur = segDurRef.current;
+    const label = `${formatTime(key)} – ${formatTime(key + dur)}`;
 
     if (pipelineUpdate) {
       setPipelineSegmentLabel(label);
@@ -147,7 +166,7 @@ export default function Home() {
       setPipelineProgress('جاري استخراج الصوت...');
     }
 
-    const jobId = await requestSegment(url, key, selectedModel, selectedVoice, speed);
+    const jobId = await requestSegment(url, key, selectedModel, selectedVoice, speed, dur);
 
     const job = await pollJob(jobId, (p) => {
       onProgress?.(p);
@@ -163,7 +182,7 @@ export default function Home() {
     }
 
     return job;
-  }, [url, selectedModel, selectedVoice, speed]);
+  }, [url, selectedModel, selectedVoice, speed, normalizeStart]);
 
   const startChain = useCallback(async (fromSegment: number, signal: AbortSignal) => {
     let current = normalizeStart(fromSegment);
@@ -179,13 +198,13 @@ export default function Home() {
           continue;
         }
       }
-      current += SEGMENT_DURATION;
+      current += segDurRef.current;
       await new Promise<void>(r => {
         const t = setTimeout(r, 500);
         signal.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true });
       });
     }
-  }, [fetchSegment]);
+  }, [fetchSegment, normalizeStart]);
 
   const playSegment = useCallback(async (startTime: number, showLoading: boolean) => {
     const key = normalizeStart(startTime);
@@ -237,7 +256,7 @@ export default function Home() {
       setIsPlaying(true);
       setTimeout(() => { isSyncingRef.current = false; }, 800);
     }
-  }, [fetchSegment, toast]);
+  }, [fetchSegment, toast, normalizeStart]);
 
   const handleInitialPlay = useCallback(async () => {
     if (!isValid || !selectedModel || !selectedVoice) {
@@ -284,17 +303,17 @@ export default function Home() {
       }
 
       setPipelineVisible(true);
-      const nextKey = key + SEGMENT_DURATION;
+      const nextKey = key + segDurRef.current;
       startChain(nextKey, abortCtrl.signal);
 
     } catch {
       setShowOverlay(false);
       toast({ title: '❌ خطأ في الاتصال', variant: 'destructive' });
     }
-  }, [isValid, selectedModel, selectedVoice, fetchSegment, startChain, toast]);
+  }, [isValid, selectedModel, selectedVoice, fetchSegment, startChain, toast, normalizeStart]);
 
   const handleAudioEnded = useCallback(() => {
-    const nextKey = activeSegmentKeyRef.current + SEGMENT_DURATION;
+    const nextKey = activeSegmentKeyRef.current + segDurRef.current;
     playSegment(nextKey, false);
   }, [playSegment]);
 
@@ -312,7 +331,7 @@ export default function Home() {
         chainAbortRef.current?.abort();
         const abortCtrl = new AbortController();
         chainAbortRef.current = abortCtrl;
-        const nextKey = key + SEGMENT_DURATION;
+        const nextKey = key + segDurRef.current;
         startChain(nextKey, abortCtrl.signal);
 
         setTimeout(() => { isSeekingRef.current = false; }, 1200);
@@ -320,7 +339,7 @@ export default function Home() {
       lastTimeRef.current = time;
     }, 500);
     return () => clearInterval(timer);
-  }, [hasStarted, isPlaying, playSegment, startChain]);
+  }, [hasStarted, isPlaying, playSegment, startChain, normalizeStart]);
 
   const handleYoutubeStateChange = (event: any) => {
     if (isSyncingRef.current) return;
@@ -460,6 +479,44 @@ export default function Home() {
                       onValueChange={([v]) => setSpeed(v)}
                       className="cursor-pointer"
                     />
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-5 border-t border-border/40">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-2 text-muted-foreground shrink-0">
+                      <Clock className="w-4 h-4 text-primary" />
+                      <span className="text-sm font-semibold">مدة المقطع:</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        disabled={showOverlay}
+                        onClick={() => setSegmentDuration(20)}
+                        className={`px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200 border ${
+                          segmentDuration === 20
+                            ? 'bg-primary text-primary-foreground border-primary shadow-[0_0_16px_hsl(var(--primary)/0.4)]'
+                            : 'bg-black/30 text-muted-foreground border-white/10 hover:border-primary/40 hover:text-foreground'
+                        }`}
+                      >
+                        ٢٠ ثانية
+                      </button>
+                      <button
+                        disabled={showOverlay}
+                        onClick={() => setSegmentDuration(60)}
+                        className={`px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200 border ${
+                          segmentDuration === 60
+                            ? 'bg-primary text-primary-foreground border-primary shadow-[0_0_16px_hsl(var(--primary)/0.4)]'
+                            : 'bg-black/30 text-muted-foreground border-white/10 hover:border-primary/40 hover:text-foreground'
+                        }`}
+                      >
+                        دقيقة كاملة
+                      </button>
+                    </div>
+                    <span className="text-xs text-muted-foreground/70 mr-1">
+                      {segmentDuration === 20
+                        ? 'استجابة أسرع — مناسب للمعاينة'
+                        : 'ترجمة أكثر سياقاً — مناسب للمشاهدة الكاملة'}
+                    </span>
                   </div>
                 </div>
 

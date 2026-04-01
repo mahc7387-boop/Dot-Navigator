@@ -17,4 +17,6 @@ export interface ProcessVideoRequest {
   voice: string;
   /** Speech speed multiplier (1.0-5.0) */
   speed: number;
+  /** Segment duration in seconds (20 or 60) */
+  duration: number;
 }

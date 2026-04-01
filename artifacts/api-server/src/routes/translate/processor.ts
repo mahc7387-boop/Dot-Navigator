@@ -56,12 +56,14 @@ export interface ProcessOptions {
   startTime: number;
   voice?: string;
   speed?: number;
+  duration?: number;
 }
 
 async function downloadAudioClip(
   videoUrl: string,
   startTime: number,
   outputPath: string,
+  duration: number,
 ): Promise<void> {
   const ytDlp = require("yt-dlp-exec");
 
@@ -75,7 +77,7 @@ async function downloadAudioClip(
   const cleanUrl = audioUrl.trim().split("\n")[0];
 
   await execAsync(
-    `ffmpeg -y -ss ${startTime} -i "${cleanUrl}" -t 20 -ar 16000 -ac 1 -f mp3 "${outputPath}"`,
+    `ffmpeg -y -ss ${startTime} -i "${cleanUrl}" -t ${duration} -ar 16000 -ac 1 -f mp3 "${outputPath}"`,
     { maxBuffer: 1024 * 1024 * 10 },
   );
 }
@@ -166,6 +168,7 @@ export async function processVideoSegment(
     startTime,
     voice = "edge:ar-SA-ZariyahNeural",
     speed = 1.0,
+    duration = 20,
   } = options;
 
   const tmpDir = fs.mkdtempSync(
@@ -179,7 +182,7 @@ export async function processVideoSegment(
     });
 
     const audioInputPath = path.join(tmpDir, "input.mp3");
-    await downloadAudioClip(videoUrl, startTime, audioInputPath);
+    await downloadAudioClip(videoUrl, startTime, audioInputPath, duration);
 
     updateJob(jobId, { progress: "جاري التعرف على الكلام..." });
     const transcript = await transcribeAudio(audioInputPath);

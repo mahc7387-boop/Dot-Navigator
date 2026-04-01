@@ -25,6 +25,7 @@ export const ProcessVideoBody = zod.object({
   model: zod.string().describe("TTS model identifier"),
   voice: zod.string().describe("Voice identifier for the selected model"),
   speed: zod.number().describe("Speech speed multiplier (1.0-5.0)"),
+  duration: zod.number().describe("Segment duration in seconds (20 or 60)"),
 });
 
 export const ProcessVideoResponse = zod.object({

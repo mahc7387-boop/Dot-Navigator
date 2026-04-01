@@ -144,12 +144,16 @@ components:
         speed:
           type: number
           description: Speech speed multiplier (1.0-5.0)
+        duration:
+          type: number
+          description: Segment duration in seconds (20 or 60)
       required:
         - videoUrl
         - startTime
         - model
         - voice
         - speed
+        - duration
 
     ProcessVideoResponse:
       type: object

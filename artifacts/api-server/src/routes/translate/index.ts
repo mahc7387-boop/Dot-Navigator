@@ -21,7 +21,7 @@ router.post("/translate/process", async (req, res) => {
     return;
   }
 
-  const { videoUrl, startTime, model: _model, voice, speed } = parsed.data;
+  const { videoUrl, startTime, model: _model, voice, speed, duration } = parsed.data;
 
   const job = createJob(startTime);
 
@@ -31,6 +31,7 @@ router.post("/translate/process", async (req, res) => {
     startTime,
     voice,
     speed,
+    duration,
   }).catch(() => {});
 
   res.json({
