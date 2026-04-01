@@ -107,33 +107,53 @@ async function translateToArabic(text: string): Promise<string> {
   return response.choices[0]?.message?.content?.trim() ?? "";
 }
 
+function buildAtempoFilter(speed: number): string | null {
+  if (Math.abs(speed - 1.0) < 0.001) return null;
+  const filters: string[] = [];
+  let remaining = speed;
+  while (remaining > 2.0 + 0.001) {
+    filters.push("atempo=2.0");
+    remaining /= 2.0;
+  }
+  filters.push(`atempo=${remaining.toFixed(4)}`);
+  return filters.join(",");
+}
+
 async function synthesizeEdgeTTS(
   text: string,
   voice: string,
   outDir: string,
+  speed: number,
 ): Promise<string> {
   const tts = new MsEdgeTTS();
   await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
-  const { audioFilePath } = await tts.toFile(outDir, text);
+  const { audioFilePath } = await tts.toFile(outDir, text, { rate: speed });
   return audioFilePath;
 }
 
 async function synthesizeGoogleTTS(
   text: string,
   lang: string,
-  outputPath: string,
+  tmpDir: string,
+  speed: number,
 ): Promise<string> {
+  const rawPath = path.join(tmpDir, "google_raw.mp3");
   const gtts = require("node-gtts")(lang);
   await new Promise<void>((resolve, reject) => {
-    gtts.save(
-      outputPath,
-      text,
-      (err: Error | null) => {
-        if (err) reject(err);
-        else resolve();
-      },
-    );
+    gtts.save(rawPath, text, (err: Error | null) => {
+      if (err) reject(err);
+      else resolve();
+    });
   });
+
+  const atempoFilter = buildAtempoFilter(speed);
+  if (!atempoFilter) return rawPath;
+
+  const outputPath = path.join(tmpDir, "google_output.mp3");
+  await execAsync(
+    `ffmpeg -y -i "${rawPath}" -filter:a "${atempoFilter}" "${outputPath}"`,
+    { maxBuffer: 1024 * 1024 * 10 },
+  );
   return outputPath;
 }
 
@@ -145,6 +165,7 @@ export async function processVideoSegment(
     videoUrl,
     startTime,
     voice = "edge:ar-SA-ZariyahNeural",
+    speed = 1.0,
   } = options;
 
   const tmpDir = fs.mkdtempSync(
@@ -178,17 +199,18 @@ export async function processVideoSegment(
     let finalAudioPath: string;
 
     if (provider === "google") {
-      const googleOutputPath = path.join(tmpDir, "output.mp3");
       finalAudioPath = await synthesizeGoogleTTS(
         translation,
         voiceId || "ar",
-        googleOutputPath,
+        tmpDir,
+        speed,
       );
     } else {
       finalAudioPath = await synthesizeEdgeTTS(
         translation,
         voiceId || "ar-SA-ZariyahNeural",
         tmpDir,
+        speed,
       );
     }
 
