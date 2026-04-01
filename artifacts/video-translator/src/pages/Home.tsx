@@ -316,8 +316,15 @@ export default function Home() {
   }, [isValid, selectedModel, selectedVoice, fetchSegment, startChain, toast, normalizeStart]);
 
   const handleAudioEnded = useCallback(() => {
-    const nextKey = activeSegmentKeyRef.current + segDurRef.current;
-    playSegment(nextKey, false);
+    const segEnd = activeSegmentKeyRef.current + segDurRef.current;
+    const ytTime = ytPlayerRef.current?.getCurrentTime() ?? 0;
+    // Only jump if YT has reached (or nearly reached) the segment boundary.
+    // If audio ended early (TTS shorter than source), the position timer will
+    // handle the transition when the YT player naturally reaches the boundary.
+    if (ytTime >= segEnd - 3) {
+      playSegment(segEnd, false);
+    }
+    // else: audio was shorter — do nothing, let the timer advance on boundary crossing
   }, [playSegment]);
 
   useEffect(() => {
@@ -325,6 +332,29 @@ export default function Home() {
     const timer = setInterval(() => {
       if (!ytPlayerRef.current || !isPlaying) return;
       const time = ytPlayerRef.current.getCurrentTime();
+
+      // ── Natural segment boundary crossing ───────────────────────────────
+      // When YT position crosses the end of the current segment, advance to
+      // the next one. This handles the case where TTS audio ended early so
+      // handleAudioEnded didn't fire the jump.
+      const segEnd = activeSegmentKeyRef.current + segDurRef.current;
+      if (time >= segEnd && !isSeekingRef.current) {
+        isSeekingRef.current = true;
+        const nextKey = segEnd;
+        const cached = segmentCacheRef.current.has(nextKey);
+        playSegment(nextKey, !cached);
+
+        chainAbortRef.current?.abort();
+        const abortCtrl = new AbortController();
+        chainAbortRef.current = abortCtrl;
+        startChain(nextKey + segDurRef.current, abortCtrl.signal);
+
+        setTimeout(() => { isSeekingRef.current = false; }, 1200);
+        lastTimeRef.current = time;
+        return;
+      }
+
+      // ── User seek detection ──────────────────────────────────────────────
       if (Math.abs(time - lastTimeRef.current) > 4 && !isSeekingRef.current) {
         isSeekingRef.current = true;
         const key = normalizeStart(time);
