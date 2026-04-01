@@ -269,6 +269,9 @@ export default function Home() {
     inFlightRef.current.clear();
 
     const time = ytPlayerRef.current?.getCurrentTime() || 0;
+    ytPlayerRef.current?.pauseVideo();
+    audioRef.current?.pause();
+    setIsPlaying(false);
     setHasStarted(true);
     setShowOverlay(true);
     setOverlayProgress('جاري استخراج الصوت...');
