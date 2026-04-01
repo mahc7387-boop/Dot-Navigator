@@ -91,6 +91,20 @@ Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used b
 
 Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
 
+### `artifacts/video-translator` (`@workspace/video-translator`)
+
+React + Vite frontend for the YouTube video dubbing app. Serves Arabic RTL UI on port 23267.
+
+- Pages: `src/pages/Home.tsx` — main page with YouTube embed, TTS settings, segment processing
+- Components: `src/components/pipeline-bar.tsx`, `processing-overlay.tsx`, `ui/` (shadcn)
+- Hooks: `src/hooks/use-youtube-url.ts` — YouTube URL parsing/validation
+- Features: 20-second segment extraction, Whisper transcription, GPT translation, Edge/Google TTS dubbing
+- Depends on: `@workspace/api-client-react` (generated React Query hooks)
+
+### `lib/integrations-openai-ai-server` (`@workspace/integrations-openai-ai-server`)
+
+Replit AI Integrations proxy for OpenAI. Provides an OpenAI client pre-configured with `AI_INTEGRATIONS_OPENAI_BASE_URL` and `AI_INTEGRATIONS_OPENAI_API_KEY` env vars. Used by `api-server` for Whisper transcription and GPT-4o-mini translation.
+
 ### `scripts` (`@workspace/scripts`)
 
 Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.

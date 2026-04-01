@@ -12,12 +12,16 @@
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
+    "@workspace/integrations-openai-ai-server": "workspace:*",
     "cookie-parser": "^1.4.7",
     "cors": "^2",
     "drizzle-orm": "catalog:",
     "express": "^5",
+    "msedge-tts": "^2.0.4",
+    "node-gtts": "^2.0.2",
     "pino": "^9",
-    "pino-http": "^10"
+    "pino-http": "^10",
+    "yt-dlp-exec": "^1.0.2"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
